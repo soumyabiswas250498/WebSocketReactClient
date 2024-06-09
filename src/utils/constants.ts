@@ -1,0 +1,1 @@
+export const socket_server = import.meta.env.VITE_SOCKET_SERVER;
