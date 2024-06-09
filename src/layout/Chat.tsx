@@ -1,21 +1,52 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Dispatch, SetStateAction, useReducer } from 'react';
 import { io, Socket } from "socket.io-client";
 import { socket_server } from '../utils/constants';
-import { Textarea } from '@/ui/ui-components/ui/textarea';
-import { Button } from '@/ui/ui-components/ui/button';
-import { Input } from "@/ui/ui-components/ui/input"
+import UserList from '@/components/chat/UserList';
+import Form from '@/components/chat/Form';
+import Messages from '@/components/chat/Messages';
+
+interface Sender {
+    id: string;
+    userName: string;
+}
+
+interface MessageState {
+    message: string;
+    sender: Sender;
+}
+
+const initialMsg: MessageState[] = [];
+
+type Action =
+    | { type: "Send"; payload: { message: string } }
+    | { type: "Receive"; payload: { message: string; sender: Sender } };
+
+const reducer = (state: MessageState[], action: Action): MessageState[] => {
+    switch (action.type) {
+        case "Send":
+            return [...state, {
+                message: action.payload.message, sender: {
+                    id: '',
+                    userName: 'you'
+                }
+            }];
+        case "Receive":
+            return [...state, { message: action.payload.message, sender: action.payload.sender }];
+        default:
+            return state;
+    }
+};
 
 function Chat() {
     const userNameFrom = window && window.sessionStorage.getItem('userNameFrom');
-    const [userNameTo, setUserNameTo] = useState('');
     const [userIdTo, setUserIdTo] = useState<string | null>('');
-
-    const [message, setMessage] = useState('');
+    const [connected, setConnected] = useState('')
     const [socket, setSocket] = useState<Socket | null>(null);
+    const [messages, dispatch] = useReducer(reducer, initialMsg)
 
     useEffect(() => {
         const newSocket = io(socket_server, {
-            auth: { usernameFrom: userNameFrom, userNameTo: userNameTo }
+            auth: { usernameFrom: userNameFrom }
         });
 
         setSocket(newSocket);
@@ -24,10 +55,11 @@ function Chat() {
             console.log(`connected with id = ${newSocket.id}`);
         });
 
-
         newSocket.on('s2c-message', (data) => {
-            console.log(data);
+            console.log(data, '***d');
+            dispatch({ type: 'Receive', payload: { message: data.message, sender: data.from } })
         });
+
         newSocket.on('receiveUserId', userIdTo => {
 
             setUserIdTo(userIdTo);
@@ -40,53 +72,50 @@ function Chat() {
 
     console.log(userIdTo, '***to')
 
-    const handleSubmitMessage = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmitMessage = (message: string, setMessage: Dispatch<SetStateAction<string>>) => {
         if (socket) {
             socket.emit('c2s-message', {
                 content: message,
                 to: userIdTo,
+                from: { id: socket.id, userName: userNameFrom }
             });
+            dispatch({ type: 'Send', payload: { message: message } })
             setMessage('');
         }
     }
 
-    const handleSelectUser = () => {
+    const handleSelectUser = (userNameTo: string, setUserNameTo: Dispatch<SetStateAction<string>>) => {
 
         if (userNameTo && socket) {
+            console.log(userNameTo, '***TO')
+            setConnected(userNameTo);
             socket.emit('getUserId', userNameTo);
             setUserNameTo('');
         }
     }
 
-    return (
-        <div className='w-2/3'>
-            <div className='flex flex-col gap-2 py-2'>
-                <Input type="text" placeholder="Receiver's User Name" value={userNameTo} onChange={(e) => { setUserNameTo(e.target.value) }} />
-                <div className='flex justify-end'>
-                    <Button className='w-24' onClick={(e) => {
-                        e.preventDefault(); handleSelectUser()
-                    }}>
-                        Submit
-                    </Button>
-                </div>
 
+
+    return (
+        <div className='flex w-full gap-2'>
+
+            <div className='w-1/3'>
+                <h1>User Name: {userNameFrom}</h1>
+                {userIdTo && <h1>Connected With: {connected}</h1>}
+                <UserList handleSelectUser={handleSelectUser} />
             </div>
 
-            <form onSubmit={handleSubmitMessage} className='flex flex-col gap-2'>
-                <Textarea
-                    placeholder="Type your message here."
-                    id='textArea'
-                    onChange={(e) => setMessage(e.target.value)}
-                    value={message}
-                />
-                <div className='flex justify-end'>
-                    <Button className='w-24'>
-                        Send
-                    </Button>
-                </div>
-            </form>
+            <div className='w-2/3 px-2 border-l border-gray-400'>
+                <Messages messages={messages} />
+
+                <Form handleSubmitMessage={handleSubmitMessage} />
+
+
+            </div>
         </div>
+
+
+
     )
 }
 
