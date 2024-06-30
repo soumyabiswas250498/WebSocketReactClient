@@ -61,7 +61,6 @@ function Chat() {
         });
 
         newSocket.on('receiveUserId', userIdTo => {
-
             setUserIdTo(userIdTo);
         })
 
@@ -113,9 +112,6 @@ function Chat() {
 
             </div>
         </div>
-
-
-
     )
 }
 
