@@ -16,6 +16,13 @@ function App() {
       element: <AuthUi />,
     },
     {
+      path: "/auth",
+      element: (
+        <AuthCheck isAuthPage={true}>
+          <AuthUi />
+        </AuthCheck>),
+    },
+    {
       path: "/chat",
       element: (
         <AuthCheck>

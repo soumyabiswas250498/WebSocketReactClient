@@ -1,118 +1,73 @@
-import React, { useEffect, useState, Dispatch, SetStateAction, useReducer } from 'react';
-import { io, Socket } from "socket.io-client";
-import { socket_server } from '../utils/constants';
-import UserList from '@/components/chat/UserList';
-import Form from '@/components/chat/Form';
-import Messages from '@/components/chat/Messages';
+// src/Chat.tsx
+import React, { useEffect, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 
-interface Sender {
+interface Message {
     id: string;
-    userName: string;
+    text: string;
 }
 
-interface MessageState {
-    message: string;
-    sender: Sender;
-}
+// const socket: Socket = io('http://localhost:8000/socket/'); // Adjust the URL if needed
 
-const initialMsg: MessageState[] = [];
 
-type Action =
-    | { type: "Send"; payload: { message: string } }
-    | { type: "Receive"; payload: { message: string; sender: Sender } };
 
-const reducer = (state: MessageState[], action: Action): MessageState[] => {
-    switch (action.type) {
-        case "Send":
-            return [...state, {
-                message: action.payload.message, sender: {
-                    id: '',
-                    userName: 'you'
-                }
-            }];
-        case "Receive":
-            return [...state, { message: action.payload.message, sender: action.payload.sender }];
-        default:
-            return state;
-    }
-};
+const socket = io("http://localhost:8000/chat", {
+    withCredentials: true,
+});
 
-function Chat() {
-    const userNameFrom = window && window.sessionStorage.getItem('userNameFrom');
-    const [userIdTo, setUserIdTo] = useState<string | null>('');
-    const [connected, setConnected] = useState('')
-    const [socket, setSocket] = useState<Socket | null>(null);
-    const [messages, dispatch] = useReducer(reducer, initialMsg)
+
+socket.on('connect_error', (err) => {
+    console.error('Connection error:', err);
+});
+
+socket.on('connect', () => {
+    console.log('Successfully connected to the server');
+
+    // Send a test message
+    socket.emit('message', { text: 'Hello, server!' });
+});
+
+
+
+const Chat: React.FC = () => {
+    const [message, setMessage] = useState<string>('');
+    const [messages, setMessages] = useState<Message[]>([]);
 
     useEffect(() => {
-        const newSocket = io(socket_server, {
-            auth: { usernameFrom: userNameFrom }
+        socket.on('message', (data: Message) => {
+            setMessages((prevMessages) => [...prevMessages, data]);
         });
-
-        setSocket(newSocket);
-
-        newSocket.on("connect", () => {
-            console.log(`connected with id = ${newSocket.id}`);
-        });
-
-        newSocket.on('s2c-message', (data) => {
-            console.log(data, '***d');
-            dispatch({ type: 'Receive', payload: { message: data.message, sender: data.from } })
-        });
-
-        newSocket.on('receiveUserId', userIdTo => {
-            setUserIdTo(userIdTo);
-        })
 
         return () => {
-            newSocket.disconnect(); // Disconnect socket on unmount
+            socket.off('message');
         };
-    }, [userNameFrom]);
+    }, []);
 
-    console.log(userIdTo, '***to')
-
-    const handleSubmitMessage = (message: string, setMessage: Dispatch<SetStateAction<string>>) => {
-        if (socket) {
-            socket.emit('c2s-message', {
-                content: message,
-                to: userIdTo,
-                from: { id: socket.id, userName: userNameFrom }
-            });
-            dispatch({ type: 'Send', payload: { message: message } })
+    const sendMessage = () => {
+        if (message.trim() !== '') {
+            const newMessage: Message = { id: new Date().toISOString(), text: message };
+            socket.emit('message', newMessage);
             setMessage('');
         }
-    }
-
-    const handleSelectUser = (userNameTo: string, setUserNameTo: Dispatch<SetStateAction<string>>) => {
-
-        if (userNameTo && socket) {
-            console.log(userNameTo, '***TO')
-            setConnected(userNameTo);
-            socket.emit('getUserId', userNameTo);
-            setUserNameTo('');
-        }
-    }
-
-
+    };
 
     return (
-        <div className='flex w-full gap-2'>
-
-            <div className='w-1/3'>
-                <h1>User Name: {userNameFrom}</h1>
-                {userIdTo && <h1>Connected With: {connected}</h1>}
-                <UserList handleSelectUser={handleSelectUser} />
+        <div>
+            <div style={{ maxHeight: '300px', overflowY: 'scroll', border: '1px solid #ccc', padding: '10px' }}>
+                {messages.map((msg) => (
+                    <div key={msg.id}>{msg.text}</div>
+                ))}
             </div>
-
-            <div className='w-2/3 px-2 border-l border-gray-400'>
-                <Messages messages={messages} />
-
-                <Form handleSubmitMessage={handleSubmitMessage} />
-
-
-            </div>
+            <input
+                type="text"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Type your message..."
+                style={{ width: '80%' }}
+            />
+            <button onClick={sendMessage}>Send</button>
         </div>
-    )
-}
+    );
+};
 
 export default Chat;
